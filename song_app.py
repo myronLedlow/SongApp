@@ -1,5 +1,6 @@
+import os
 import threading
-from tkinter import ttk, PhotoImage, messagebox
+from tkinter import ttk, messagebox
 import tkinter as tk
 from tkinter import *
 from PIL import Image, ImageTk
@@ -13,15 +14,27 @@ class SongCreatorApp:
 
     def __init__(self, root):
         ''' Initialize vars'''
+        self.retrieveDB()
+        self.original_dir = os.getcwd()
         self.root = root
         self.root.title("Song Manager")
-        self.retrieveDB()
         self.original_chords = []
         self.transposed_chords = []
         self.song_list = []
         self.arr = []
         self.chords_arr = []
         self.chords_arr_new = []
+        self.load_icons()  # Load icons
+        pygame.init()
+        self.create_ui()
+        self.metronome_sound = pygame.mixer.Sound("metronome.wav")
+        self.metronome_thread = None
+        self.is_metronome_playing = False
+        self.metronome_bpm = 120
+
+     # load image icons
+    def load_icons(self):
+
         add_icon_img = (Image.open("images/add_icon_2.png"))
         resized_image = add_icon_img.resize((30, 30))
         self.add_icon = ImageTk.PhotoImage(resized_image)
@@ -52,12 +65,6 @@ class SongCreatorApp:
         metronome_icon_img = (Image.open("images/metronome_icon.png"))
         resized_image = metronome_icon_img.resize((30, 30))
         self.metronome_icon = ImageTk.PhotoImage(resized_image)
-        pygame.init()
-        self.create_ui()
-        self.metronome_sound = pygame.mixer.Sound("metronome.wav")
-        self.metronome_thread = None
-        self.is_metronome_playing = False
-        self.metronome_bpm = 120
 
     def retrieveDB(self):
 
@@ -80,21 +87,35 @@ class SongCreatorApp:
 
             return connection
 
-        connection = create_connection("sm_app.sqlite")
+        # connection = create_connection("sm_app.sqlite")
+        db_path = os.path.abspath(os.path.join(
+            os.path.dirname(__file__), "sm_app.sqlite"))
+        connection = create_connection(db_path)
 
         # create table in DB
         create_song_table = """CREATE TABLE IF NOT EXISTS songs (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, arrangement TEXT, bpm TEXT, capo TEXT, chords TEXT, transposed_chords TEXT, lyrics TEXT, notes TEXT);"""
         execute_query(connection, create_song_table)
-        conn = sqlite3.connect("sm_app.sqlite")
+        conn = sqlite3.connect(db_path)
         conn.commit()
         conn.close()
 
-        ''' 
+        '''
         drop_table = """Drop Table songs"""
         execute_query(connection, drop_table)
         conn = sqlite3.connect("sm_app.sqlite")
         conn.commit()
+        conn.close()
         '''
+
+    def center_window(self, window):
+        window_width = 1500
+        window_height = 1500
+        screen_width = window.winfo_screenwidth()
+        screen_height = window.winfo_screenheight()
+        x_cordinate = int((screen_width / 2) - (window_width / 2))
+        y_cordinate = int((screen_height / 2) - (window_height / 2))
+        window.geometry("{}x{}+{}+{}".format(window_width,
+                        window_height, x_cordinate, y_cordinate))
 
     def create_ui(self):
 
@@ -131,7 +152,6 @@ class SongCreatorApp:
         self.root.geometry("1500x1000")
         self.root.title("Song Manager")
         self.root.config(bg="white")
-
         canvas = tk.Canvas(root, width=1500, height=60, bg="#333333")
         canvas.pack()
 
@@ -211,18 +231,13 @@ class SongCreatorApp:
             self.song_window.destroy()
 
     def create_song(self):
+
         self.song_window = tk.Toplevel(self.root)
         self.song_window.title("Add Song")
         self.song_window.resizable(True, True)
         self.song_window.configure(bg="#333333")
-        window_height = 1500
-        window_width = 1100
-        screen_width = self.song_window.winfo_screenwidth()
-        screen_height = self.song_window.winfo_screenheight()
-        x_cordinate = int((screen_width/2) - (window_width/2))
-        y_cordinate = int((screen_height/2) - (window_height/2))
-        self.song_window.geometry(
-            "{}x{}+{}+{}".format(window_width, window_height, x_cordinate, y_cordinate))
+        self.center_window(self.song_window)
+
         tk.Label(self.song_window, text="Song Name: ",
                  font=("Arial", 18, "bold"), bg="#333333", fg="white").pack(pady=5)
         self.song_name_entry = tk.Entry(
@@ -238,11 +253,11 @@ class SongCreatorApp:
             "Arial", 18, "bold"), bg="#333333", fg="white").pack(pady=5)
         self.bpm_combobox = ttk.Combobox(
             self.song_window, values=[i for i in range(40, 201)], state="readonly")
-        self.bpm_combobox.pack(pady=10)
+        self.bpm_combobox.pack(pady=5)
 
         self.metronome_button = ttk.Button(
             self.song_window, text="Use Metronome", command=self.show_metronome_window, style="TButton", image=self.metronome_icon, compound=tk.LEFT)
-        self.metronome_button.pack(pady=5)
+        self.metronome_button.pack(pady=10)
 
         tk.Label(self.song_window, text="Capo: ", font=(
             "Arial", 18, "bold"), bg="#333333", fg="white").pack(pady=5)
@@ -264,18 +279,18 @@ class SongCreatorApp:
 
         exit_button = ttk.Button(
             self.song_window, text=" Exit", command=self.confirm_exit_add, style="TButton", image=self.exit_icon, compound=tk.LEFT)
-        exit_button.pack(pady=25, side="bottom")
+        exit_button.pack(pady=10, side="bottom")
 
         save_button = ttk.Button(
             self.song_window, text=" Save", command=self.save_song, style="Green.TButton", image=self.save_icon, compound=tk.LEFT)
         save_button.pack(pady=10, side="bottom")
 
         self.song_lyrics_entry = tk.Text(
-            self.song_window, wrap=tk.WORD, height=75, width=50)
+            self.song_window, wrap=tk.WORD, height=300, width=75)
         self.song_lyrics_entry.pack(pady=10, side="right", expand=True)
 
         self.song_notes_entry = tk.Text(
-            self.song_window, wrap=tk.WORD, height=75, width=50)
+            self.song_window, wrap=tk.WORD, height=300, width=75)
         self.song_notes_entry.pack(pady=10, side="left", expand=True)
 
         tk.Label(self.song_window, text="Song Lyrics ——>",
@@ -284,20 +299,24 @@ class SongCreatorApp:
                  font=("Arial", 18, "bold"), bg="#333333", fg="white").pack(side="left", padx=20, pady=5)
 
     # Allow user to play, pause, stop metronome
+
     def show_metronome_window(self):
 
         self.metronome_window = tk.Toplevel(self.root)
         self.metronome_window.title("Metronome")
         self.metronome_window.resizable(False, False)
+        self.metronome_window.protocol(
+            "WM_DELETE_WINDOW", self.close_metronome_window)
         self.metronome_window.configure(bg="#333333")
         window_height = 500
-        window_width = 500
+        window_width = 300
         screen_width = self.metronome_window.winfo_screenwidth()
         screen_height = self.metronome_window.winfo_screenheight()
-        x_cordinate = int((screen_width/2) - (window_width/2))
-        y_cordinate = int((screen_height/2) - (window_height/2))
+        x_coordinate = int((screen_width/2) - (window_width/2))
+        y_coordinate = int((screen_height/2) - (window_height/2))
         self.metronome_window.geometry(
-            "{}x{}+{}+{}".format(window_width, window_height, x_cordinate, y_cordinate))
+            "{}x{}+{}+{}".format(window_width, window_height, x_coordinate, y_coordinate))
+
         self.play_button = ttk.Button(
             self.metronome_window, text="Play", command=self.start_metronome, style="TButton", image=self.play_icon, compound=tk.LEFT)
         self.play_button.pack(pady=50)
@@ -310,10 +329,15 @@ class SongCreatorApp:
         self.stop_button.pack(pady=50)
         self.stop_button["state"] = "disabled"
 
+    def close_metronome_window(self):
+        self.is_metronome_playing = False
+        self.metronome_window.destroy()
+
     # Starts a different thread
     def start_metronome(self):
         if self.bpm_combobox.get():
             bpm = int(self.bpm_combobox.get())
+
             self.metronome_bpm = bpm
             self.play_button["state"] = "disabled"
             self.pause_button["state"] = "normal"
@@ -371,6 +395,7 @@ class SongCreatorApp:
         self.chords_window.configure(bg="#333333")
         self.chords_window.title("Chords")
         self.chords_window.resizable(True, True)
+
         window_height = 500
         window_width = 300
         screen_width = self.chords_window.winfo_screenwidth()
@@ -379,6 +404,8 @@ class SongCreatorApp:
         y_coordinate = int((screen_height/2) - (window_height/2))
         self.chords_window.geometry(
             "{}x{}+{}+{}".format(window_width, window_height, x_coordinate, y_coordinate))
+
+        # self.center_window(self.chords_window)
 
         canvas = tk.Canvas(self.chords_window, bg="#333333")
         canvas.pack(side='left', fill='both', expand=True)
@@ -481,7 +508,9 @@ class SongCreatorApp:
         messagebox.showinfo("information", "Song Saved")
 
         # insert data in database
+
         def saveDB():
+
             conn = sqlite3.connect("sm_app.sqlite")
             entry_name = self.song_name_entry.get()
             entry_arrangement = self.song_arrangement_entry.get()
@@ -493,6 +522,7 @@ class SongCreatorApp:
             entry_transposed_chords = ' '.join(self.transposed_chords)
             entry_lyrics = self.song_lyrics_entry.get(1.0, tk.END)
             entry_notes = self.song_notes_entry.get(1.0, tk.END)
+
             if (len(entry_name) > 0):
                 conn.execute('INSERT INTO songs (name, arrangement, bpm, capo, chords, transposed_chords, lyrics, notes) VALUES(?,?,?,?,?,?,?,?)', (
                     str(entry_name), str(entry_arrangement), str(entry_bpm), str(entry_capo), str(entry_chords), str(entry_transposed_chords), str(entry_lyrics), str(entry_notes)))
@@ -504,6 +534,7 @@ class SongCreatorApp:
         self.song_window.destroy()
 
     # map chords to their transposed selves (based on chord and capo fret number)
+
     def transpose_chord(self, chord, capo):
 
         chord_mappings = {
@@ -632,217 +663,11 @@ class SongCreatorApp:
             self.update_song_list()
             messagebox.showinfo("information", "Song Deleted")
 
-    # edit song details
-    '''
-    def edit_song(self, song, arrangement, bpm, capo, chords, transposed_chords, lyrics, notes):
-
-        # Allow user to play, pause, stop metronome
-        def show_metronome_window_2():
-
-            self.metronome_window = tk.Toplevel(self.root)
-            self.metronome_window.title("Metronome")
-            self.metronome_window.resizable(False, False)
-            self.metronome_window.configure(bg="#333333")
-            window_height = 500
-            window_width = 500
-            screen_width = self.metronome_window.winfo_screenwidth()
-            screen_height = self.metronome_window.winfo_screenheight()
-            x_cordinate = int((screen_width/2) - (window_width/2))
-            y_cordinate = int((screen_height/2) - (window_height/2))
-            self.metronome_window.geometry(
-                "{}x{}+{}+{}".format(window_width, window_height, x_cordinate, y_cordinate))
-            self.play_button = ttk.Button(
-                self.metronome_window, text="Play", command=self.start_metronome, style="TButton", image=self.play_icon, compound=tk.LEFT)
-            self.play_button.pack(pady=50)
-            self.pause_button = ttk.Button(
-                self.metronome_window, text="Pause", command=self.pause_metronome, style="TButton", image=self.pause_icon, compound=tk.LEFT)
-            self.pause_button.pack(pady=50)
-            self.pause_button["state"] = "disabled"
-            self.stop_button = ttk.Button(
-                self.metronome_window, text="Stop", command=self.stop_metronome, style="TButton", image=self.stop_icon, compound=tk.LEFT)
-            self.stop_button.pack(pady=50)
-            self.stop_button["state"] = "disabled"
-
-        # Starts a different thread
-        def start_metronome():
-            if self.bpm_combobox.get():
-                bpm = int(self.bpm_combobox.get())
-                self.metronome_bpm = bpm
-                self.play_button["state"] = "disabled"
-                self.pause_button["state"] = "normal"
-                self.stop_button["state"] = "normal"
-                self.is_metronome_playing = True
-                self.metronome_thread = threading.Thread(
-                    target=self.play_metronome)
-                self.metronome_thread.start()
-            else:
-                messagebox.showinfo(
-                    "Information", "Please select the BPM first")
-                return
-
-        def pause_metronome():
-            self.play_button["state"] = "normal"
-            self.pause_button["state"] = "disabled"
-            self.stop_button["state"] = "normal"
-            self.is_metronome_playing = False
-
-        def stop_metronome():
-            self.play_button["state"] = "normal"
-            self.pause_button["state"] = "disabled"
-            self.stop_button["state"] = "disabled"
-            self.is_metronome_playing = False
-            pygame.mixer.stop()
-            self.metronome_window.destroy()
-
-        def play_metronome():
-
-            while self.is_metronome_playing:
-                try:
-                    self.metronome_sound.play()
-                    beat_delay = 60000 / self.metronome_bpm  # Calculate delay in milliseconds
-                    pygame.time.delay(int(beat_delay))
-                except pygame.error:
-                    print(
-                        "Error: Metronome sound file not found or could not be loaded.")
-                    self.is_metronome_playing = False
-
-        edit_window = tk.Toplevel(self.root)
-        edit_window.title("Edit Song")
-        edit_window.resizable(True, True)
-        edit_window.configure(bg="#333333")
-        #  window geometry
-        window_height = 1500
-        window_width = 1100
-        screen_width = edit_window.winfo_screenwidth()
-        screen_height = edit_window.winfo_screenheight()
-        x_cordinate = int((screen_width/2) - (window_width/2))
-        y_cordinate = int((screen_height/2) - (window_height/2))
-        edit_window.geometry(
-            "{}x{}+{}+{}".format(window_width, window_height, x_cordinate, y_cordinate))
-
-        # Create and populate fields for editing song details
-        tk.Label(edit_window, text="Song Name: ",
-                 font=("Arial", 14, "bold"), bg="#333333", fg="white").pack()
-        song_name_entry = ttk.Entry(edit_window)
-        song_name_entry.insert(0, song)
-        song_name_entry.pack(pady=5)
-        tk.Label(edit_window, text="Song Arrangement: ",
-                 font=("Arial", 14, "bold"), bg="#333333", fg="white").pack()
-        song_arrangement_entry = ttk.Entry(edit_window)
-        song_arrangement_entry.insert(0, arrangement)
-        song_arrangement_entry.pack(pady=5)
-        tk.Label(edit_window, text="Song BPM: ",
-                 font=("Arial", 14, "bold"), bg="#333333", fg="white").pack()
-        bpm_combobox = ttk.Combobox(
-            edit_window, values=[str(i) for i in range(40, 201)], state="readonly")
-        bpm_combobox.set(bpm)
-        bpm_combobox.pack(pady=5)
-
-        metronome_button_2 = ttk.Button(
-            edit_window, text="Use Metronome", command=show_metronome_window_2, style="TButton", image=self.metronome_icon, compound=tk.LEFT)
-        metronome_button_2.pack(pady=5)
-
-        capo_label = tk.Label(
-            edit_window, text="Select Capo:", font=("Arial", 14, "bold"), bg="#333333", fg="white")
-        capo_label.pack()
-        capo_combobox = ttk.Combobox(edit_window, values=[
-            "None"] + [str(i) for i in range(1, 9)], state="readonly")
-
-        if capo:
-            capo_combobox.set(capo)
-        else:
-            capo_combobox.set("None")
-        capo_combobox.pack(pady=5)
-
-        def update_song_details():
-            new_name = song_name_entry.get()
-            new_arrangement = song_arrangement_entry.get()
-            new_bpm = bpm_combobox.get()
-            new_capo = capo_combobox.get()
-
-            if (not new_name):
-                messagebox.showinfo(
-                    "Information", "Please enter the name of the song.")
-                return
-            if (new_name.isnumeric()):
-                messagebox.showinfo(
-                    "Information", "Please enter a valid name.")
-                return
-
-            # Convert chords to lists
-            new_chords = self.song_chords_entry.get().split()
-            new_transposed_chords = [
-                self.transpose_chord(i, new_capo) for i in new_chords]
-            new_lyrics = self.song_lyrics_entry.get("1.0", tk.END)
-            new_notes = self.song_notes_entry.get("1.0", tk.END)
-            new_chords = [chord.strip() for chord in new_chords]
-            new_transposed_chords = [chord.strip()
-                                     for chord in new_transposed_chords]
-
-            chord_error = False
-
-            for c in new_transposed_chords:
-                if not (c in ["C", "C#", "D", "Eb", "E", "F", "F#",
-                              "G", "Ab", "A", "Bb", "B", "Cm", "C#m",
-                              "Dm", "Ebm", "Em", "Fm", "F#m", "Gm",
-                              "Abm", "Am", "Bbm", "Bm",
-                              "C7", "C#7", "D7", "Eb7", "E7", "F7", "F#7",
-                              "G7", "Ab7", "A7", "Bb7", "B7", "Cm7", "C#m7",
-                              "Dm7", "Ebm7", "Em7", "Fm7", "F#m7", "Gm7",
-                              "Abm7", "Am7", "Bbm7", "Bm7"]):
-                    chord_error = True
-
-            if chord_error:
-                messagebox.showinfo(
-                    "Information", "Please enter valid chords")
-                return
-
-            # update the song details in the database with both original and transposed chords
-            conn = sqlite3.connect("sm_app.sqlite")
-            conn.execute(
-                'UPDATE songs SET name=?, arrangement=?, bpm=?, capo=?, chords=?, transposed_chords=?, lyrics=?, notes=? WHERE name=?',
-                (new_name, new_arrangement, new_bpm, new_capo, ' '.join(
-                    new_chords), ' '.join(new_transposed_chords), new_lyrics, new_notes, song)
-            )
-            conn.commit()
-            conn.close()
-
-            # close edit window
-            edit_window.destroy()
-            # update the list
-            self.update_song_list()
-            messagebox.showinfo("Information", "Changes Saved")
-
-        # get chords from input
-        tk.Label(edit_window, text="Original Chords (space-separated):",
-                 font=("Arial", 14, "bold"), bg="#333333", fg="white").pack(pady=5)
-        chord_s = "C, C#, D, Eb, E, F, F#,\nG, Ab, A, Bb, B, Cm, \nC#m,Dm, Ebm, Em, Fm, F#m, \nGm, Abm, Am, Bbm, Bm, C7, \nC#7, D7, Eb7, E7, F7, F#7, \nG7, Ab7, A7, Bb7, B7, Cm7, \nC#m7,Dm7, Ebm7, Em7, Fm7, F#m7, Gm7,\nAbm7, Am7, Bbm7, Bm7"
-
-        tk.Label(edit_window, text=f"Chord options are: \n————————\n {chord_s}\n————————", font=(
-            "times", 12, "italic"), bg="#333333", fg="light yellow").pack(pady=5)
-        self.song_chords_entry = ttk.Entry(edit_window)
-        self.song_chords_entry.insert(0, ''.join(chords))
-        self.song_chords_entry.pack(pady=10)
-        # save Changes
-        save_changes_button = ttk.Button(
-            edit_window, text=" Save Changes", style="Green.TButton", command=update_song_details, image=self.save_icon, compound=LEFT)
-        save_changes_button.pack(pady=10)
-        self.song_lyrics_entry = tk.Text(
-            edit_window, height=25, width=50, wrap=WORD, font=("Arial", 12, "italic"))
-        self.song_lyrics_entry.insert("1.0", lyrics)
-        self.song_lyrics_entry.pack(pady=5, side="right", expand=True)
-        self.song_notes_entry = tk.Text(
-            edit_window, height=25, width=50, wrap=WORD, font=("Arial", 12, "italic"))
-        self.song_notes_entry.insert(
-            "1.0", notes)
-        self.song_notes_entry.pack(pady=5, side="left", expand=True)
-        tk.Label(edit_window, text="Song Lyrics ——>",
-                 font=("Arial", 16, "bold"), bg="#333333", fg="white").pack(side="right", pady=5, padx=10)
-        tk.Label(edit_window, text="<—— Notes",
-                 font=("Arial", 16, "bold"), bg="#333333", fg="white").pack(side="left", pady=5, padx=10)
-
-        edit_window.mainloop()
-    '''
+    def confirm_exit_edit(self):
+        result = messagebox.askquestion(
+            "Exit", "Are you sure you want to exit?")
+        if result == "yes":
+            self.edit_window.destroy()
 
     # edit song details
     def edit_song(self, song, arrangement, bpm, capo, chords, transposed_chords, lyrics, notes):
@@ -855,13 +680,15 @@ class SongCreatorApp:
             self.metronome_window.resizable(False, False)
             self.metronome_window.configure(bg="#333333")
             window_height = 500
-            window_width = 500
+            window_width = 300
             screen_width = self.metronome_window.winfo_screenwidth()
             screen_height = self.metronome_window.winfo_screenheight()
-            x_cordinate = int((screen_width/2) - (window_width/2))
-            y_cordinate = int((screen_height/2) - (window_height/2))
+            x_coordinate = int((screen_width/2) - (window_width/2))
+            y_coordinate = int((screen_height/2) - (window_height/2))
             self.metronome_window.geometry(
-                "{}x{}+{}+{}".format(window_width, window_height, x_cordinate, y_cordinate))
+                "{}x{}+{}+{}".format(window_width, window_height, x_coordinate, y_coordinate))
+            # self.center_window(self.metronome_window)
+
             self.play_button = ttk.Button(
                 self.metronome_window, text="Play", command=self.start_metronome, style="TButton", image=self.play_icon, compound=tk.LEFT)
             self.play_button.pack(pady=50)
@@ -922,14 +749,8 @@ class SongCreatorApp:
         self.edit_window.resizable(True, True)
         self.edit_window.configure(bg="#333333")
         #  window geometry
-        window_height = 1500
-        window_width = 1100
-        screen_width = self.edit_window.winfo_screenwidth()
-        screen_height = self.edit_window.winfo_screenheight()
-        x_cordinate = int((screen_width/2) - (window_width/2))
-        y_cordinate = int((screen_height/2) - (window_height/2))
-        self.edit_window.geometry(
-            "{}x{}+{}+{}".format(window_width, window_height, x_cordinate, y_cordinate))
+
+        self.center_window(self.edit_window)
 
         # Create and populate fields for editing song details
         tk.Label(self.edit_window, text="Song Name: ",
@@ -1009,7 +830,10 @@ class SongCreatorApp:
                 return
 
             # update the song details in the database with both original and transposed chords
-            conn = sqlite3.connect("sm_app.sqlite")
+            # conn = sqlite3.connect("sm_app.sqlite")
+            db_path = os.path.abspath(os.path.join(
+                os.path.dirname(__file__), "sm_app.sqlite"))
+            conn = sqlite3.connect(db_path)
             conn.execute(
                 'UPDATE songs SET name=?, arrangement=?, bpm=?, capo=?, chords=?, transposed_chords=?, lyrics=?, notes=? WHERE name=?',
                 (new_name, new_arrangement, new_bpm, new_capo, ' '.join(
@@ -1034,10 +858,16 @@ class SongCreatorApp:
         self.song_chords_entry = ttk.Entry(self.edit_window)
         self.song_chords_entry.insert(0, ''.join(chords))
         self.song_chords_entry.pack(pady=10)
+
         # save Changes
         save_changes_button = ttk.Button(
             self.edit_window, text=" Save Changes", style="Green.TButton", command=update_song_details, image=self.save_icon, compound=LEFT)
         save_changes_button.pack(pady=10)
+
+        exit_button = ttk.Button(
+            self.edit_window, text=" Exit", command=self.confirm_exit_edit, style="TButton", image=self.exit_icon, compound=tk.LEFT)
+        exit_button.pack(pady=10)
+
         self.song_lyrics_entry = tk.Text(
             self.edit_window, height=25, width=50, wrap=WORD, font=("Arial", 12, "italic"))
         self.song_lyrics_entry.insert("1.0", lyrics)
@@ -1054,78 +884,70 @@ class SongCreatorApp:
 
         self.edit_window.mainloop()
 
+    def exit_details(self):
+        self.details_window.destroy()
+
     def show_song_details(self, song, arrangement, bpm, capo, chords, transposed_chords, lyrics, notes):
 
         self.retrieveDB()
-        details_window = tk.Toplevel(self.root)
-        details_window.title("Song Details")
-        details_window.resizable(True, True)
-        details_window.configure(bg="#333333")
-        window_height = 800
-        window_width = 1000
-        screen_width = details_window.winfo_screenwidth()
-        screen_height = details_window.winfo_screenheight()
-        x_cordinate = int((screen_width/2) - (window_width/2))
-        y_cordinate = int((screen_height/2) - (window_height/2))
-        details_window.geometry(
-            "{}x{}+{}+{}".format(window_width, window_height, x_cordinate, y_cordinate))
+        self.details_window = tk.Toplevel(self.root)
+        self.details_window.title("Song Details")
+        self.details_window.resizable(False, False)
+        self.details_window.configure(bg="#333333")
+
+        self.center_window(self.details_window)
         # alt bg -> bg="#0078D4"
         header_frame = tk.Frame(
-            details_window, bg="#333333", height=100)
+            self.details_window, bg="#333333", height=100)
         header_frame.pack(fill="x")
-        # tk.Label(header_frame, text="Song Details",
-        #         font=("Arial", 40, "bold"), bg="#0078D4", fg="white").pack(pady=20)
-        # tk.Label(header_frame, text="Song Details",
-        # font=("Arial", 40, "bold"), bg="#333333", fg="white").pack(pady=20)
-        tk.Label(details_window, text=f"Name: {song}", font=(
-            "arial", 40, "bold"), bg="#333333", fg="white").pack(pady=20)
-        tk.Label(details_window, text=f"Arrangement: {arrangement}", font=(
-            "Times", 32, "bold"), bg="#333333", fg="white").pack(pady=20)
-        tk.Label(details_window, text=f"BPM: {bpm}", font=(
-            "Times", 32, "bold"), bg="#333333", fg="white").pack(pady=20)
-        tk.Label(details_window, text=f"Capo: {capo}", font=(
-            "Times", 32, "bold"), bg="#333333", fg="white").pack(pady=20)
+
+        tk.Label(self.details_window, text=f"Name: {song}", font=(
+            "arial", 32, "bold"), bg="#333333", fg="white").pack(pady=20)
+        tk.Label(self.details_window, text=f"Arrangement: [{arrangement}]", font=(
+            "Times", 28, "bold"), bg="#333333", fg="white").pack(pady=20, padx=10)
+        tk.Label(self.details_window, text=f"BPM: {bpm}", font=(
+            "Times", 28, "bold"), bg="#333333", fg="white").pack(pady=20)
+        tk.Label(self.details_window, text=f"Capo: {capo}", font=(
+            "Times", 28, "bold"), bg="#333333", fg="white").pack(pady=20)
 
         if capo and capo != "None":
 
             chords = ' '.join(chord.strip() for chord in chords.split())
             transposed_chords = ' '.join(
                 chord.strip() for chord in transposed_chords.split())
-            tk.Label(details_window, text=f"Original Chords: {chords}", font=(
+            tk.Label(self.details_window, text=f"Original Chords: {chords}", font=(
                 "Times", 32, "bold"), bg="#333333", fg="white").pack(pady=20)
-            tk.Label(details_window, text=f"New Chords: {transposed_chords}", font=(
+            tk.Label(self.details_window, text=f"New Chords: {transposed_chords}", font=(
                 "Times", 32, "bold"), bg="#333333", fg="white").pack(pady=20)
 
         else:
-            tk.Label(details_window, text=f"Chords: {chords}", font=(
+            tk.Label(self.details_window, text=f"Chords: {chords}", font=(
                 "Times", 32, "bold"), bg="#333333", fg="white").pack(pady=20)
 
-        show_lyrics_button = ttk.Button(details_window, text="Show Lyrics", style="Blue.TButton", command=lambda: [
+        show_lyrics_button = ttk.Button(self.details_window, text="Show Lyrics", style="Blue.TButton", command=lambda: [
             self.show_lyrics(lyrics)])  # Pass the lyrics to the show_lyrics method
         show_lyrics_button.pack(pady=10)
-        show_notes_button = ttk.Button(details_window, text="Show Notes", style="Blue.TButton", command=lambda: [
+        show_notes_button = ttk.Button(self.details_window, text="Show Notes", style="Blue.TButton", command=lambda: [
             self.show_notes(notes)])
         show_notes_button.pack(pady=10)
 
+        exit_button = ttk.Button(
+            self.details_window, text=" Exit", command=self.exit_details, style="TButton", image=self.exit_icon, compound=tk.LEFT)
+        exit_button.pack(pady=20)
+
     def show_lyrics(self, lyrics):
 
-        lyrics_window = tk.Toplevel(self.root)
-        lyrics_window.title("Lyrics")
-        lyrics_window.resizable(False, False)
-        window_height = 800
-        window_width = 1000
-        screen_width = lyrics_window.winfo_screenwidth()
-        screen_height = lyrics_window.winfo_screenheight()
-        x_cordinate = int((screen_width/2) - (window_width/2))
-        y_cordinate = int((screen_height/2) - (window_height/2))
-        lyrics_window.geometry(
-            "{}x{}+{}+{}".format(window_width, window_height, x_cordinate, y_cordinate))
+        self.lyrics_window = tk.Toplevel(self.root)
+        self.lyrics_window.title("Lyrics")
+        self.lyrics_window.resizable(False, False)
+
+        self.center_window(self.lyrics_window)
 
         ''' in case I want to use a canvas and frame here later
-        canvas = tk.Canvas(lyrics_window)
+        canvas = tk.Canvas(self.lyrics_window)
         canvas.pack(side='left', fill='both', expand=True)
         vscrollbar = tk.Scrollbar(
-            lyrics_window, orient='vertical', command=canvas.yview)
+            self.lyrics_window, orient='vertical', command=canvas.yview)
         vscrollbar.pack(side='right', fill='y')
         canvas.configure(yscrollcommand=vscrollbar.set)
         lyrics_frame = tk.Frame(canvas)
@@ -1133,11 +955,11 @@ class SongCreatorApp:
                              anchor='nw', tags='lyrics_frame')
         '''
 
-        lyrics_text = tk.Text(lyrics_window, wrap=tk.WORD)
+        lyrics_text = tk.Text(self.lyrics_window, wrap=tk.WORD)
         lyrics_text.pack(pady=10, fill='both', expand=True)
         lyrics_text.insert(tk.END, lyrics)
         lyrics_text.config(state=tk.DISABLED)
-        lyrics_window.mainloop()
+        self.lyrics_window.mainloop()
 
         '''
         canvas.bind('<Configure>', lambda e: canvas.configure(
@@ -1146,23 +968,17 @@ class SongCreatorApp:
 
     def show_notes(self, notes):
 
-        notes_window = tk.Toplevel(self.root)
-        notes_window.title("Notes")
-        notes_window.resizable(False, False)
-        window_height = 800
-        window_width = 1000
-        screen_width = notes_window.winfo_screenwidth()
-        screen_height = notes_window.winfo_screenheight()
-        x_cordinate = int((screen_width/2) - (window_width/2))
-        y_cordinate = int((screen_height/2) - (window_height/2))
-        notes_window.geometry(
-            "{}x{}+{}+{}".format(window_width, window_height, x_cordinate, y_cordinate))
+        self.notes_window = tk.Toplevel(self.root)
+        self.notes_window.title("Notes")
+        self.notes_window.resizable(False, False)
+
+        self.center_window(self.self.notes_window)
 
         ''' in case I want to use a canvas and frame here later
-        canvas = tk.Canvas(notes_window)
+        canvas = tk.Canvas(self.notes_window)
         canvas.pack(side='left', fill='both', expand=True)
         vscrollbar = tk.Scrollbar(
-            notes_window, orient='vertical', command=canvas.yview)
+            self.notes_window, orient='vertical', command=canvas.yview)
         vscrollbar.pack(side='right', fill='y')
         canvas.configure(yscrollcommand=vscrollbar.set)
         notes_frame = tk.Frame(canvas)
@@ -1170,7 +986,7 @@ class SongCreatorApp:
                              anchor='nw', tags='notes_frame')
         '''
 
-        notes_text = tk.Text(notes_window, wrap=tk.WORD)
+        notes_text = tk.Text(self.notes_window, wrap=tk.WORD)
         notes_text.pack(pady=10, fill='both', expand=True)
         notes_text.insert(tk.END, notes)
         notes_text.config(state=tk.DISABLED)  # Disable editing
@@ -1178,7 +994,7 @@ class SongCreatorApp:
         '''
         canvas.bind('<Configure>', lambda e: canvas.configure(
             scrollregion=canvas.bbox('all')))
-        notes_window.mainloop()
+        self.notes_window.mainloop()
         '''
 
 
@@ -1198,5 +1014,7 @@ if __name__ == "__main__":
     ttk.Style().configure("Regular.TButton", foreground="black",
                           background="white", font=("Arial", 12, "bold"), borderwidth=0,  padding=10)
 
+    app_icon = tk.PhotoImage(file="images/SongManager_Logo_2.png")
+    root.iconphoto(True, app_icon)
     app = SongCreatorApp(root)
     root.mainloop()
